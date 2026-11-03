@@ -19,7 +19,12 @@ Ako build padne: otvori neuspeli run u **Actions**, skini artifact `build-log` (
 3. Long-press na aplikaciju → **Settings** → uključi **Fix Local Notifications**.
 4. Prvi put kad pokreneš trening, dozvoli notifikacije.
 
-Napomena: LiveContainer ne podržava app extensions, pa Live Activity (kartica na zaključanom ekranu) ne postoji. Umesto nje trening se kontroliše iz notifikacije (Done / Skip / −1 rep / Edit).
+## Kontrola treninga sa zaključanog ekrana
+
+- **Instalacija preko SideStore / AltStore / Sideloadly:** Live Activity kartica na zaključanom ekranu i u Dynamic Island-u (vežba, ukupni tajmer, set, +/− ponavljanja, +/− kg, X / odmor / Done).
+- **LiveContainer:** ne pokreće app extensions, pa umesto kartice ide notifikacija sa akcijama Done / Skip / −1 rep / Edit.
+
+Aplikacija sama bira način; trenutni se vidi u Settings → Notifications → Lock screen controls.
 
 ## Uvoz iz Excel-a
 
@@ -43,7 +48,9 @@ project.yml                 XcodeGen projekat (iOS 17+)
 GymPlan/App                 ulaz u aplikaciju, tema, formatiranje
 GymPlan/Models              Plan, Routine, Exercise, istorija, aktivni trening
 GymPlan/Store               čuvanje podataka (JSON u Documents)
-GymPlan/Workout             tok treninga, notifikacije, zvuk za kraj odmora
+GymPlan/Workout             tok treninga, notifikacije, Live Activity, zvuk za kraj odmora
+GymPlanWidgets              widget extension: Live Activity kartica
+Shared                      kod zajednički za app i extension (ActivityAttributes, App Intents)
 GymPlan/Import              čitanje .xlsx / .csv
 GymPlan/Views               ekrani
 ```

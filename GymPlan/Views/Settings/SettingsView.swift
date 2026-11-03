@@ -92,6 +92,7 @@ struct SettingsView: View {
 
     private var notificationSection: some View {
         Section {
+            LabeledContent("Lock screen controls", value: controlsMode)
             HStack {
                 Text("Status")
                 Spacer()
@@ -112,7 +113,7 @@ struct SettingsView: View {
         } header: {
             Text("Notifications")
         } footer: {
-            Text("Used for the workout controls (Done, Skip, −1 rep, Edit) and the rest alert. In LiveContainer enable \"Fix Local Notifications\" for this app.")
+            Text("Installed with SideStore, AltStore or Sideloadly the workout is controlled from a Live Activity on the lock screen. Inside LiveContainer extensions can't run, so a notification with Done, Skip, −1 rep and Edit is used instead; enable \"Fix Local Notifications\" for this app there.")
         }
     }
 
@@ -146,6 +147,11 @@ struct SettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         return "\(version) (\(build))"
+    }
+
+    private var controlsMode: String {
+        if !LiveActivityController.isInstalledNormally { return "Notification (LiveContainer)" }
+        return LiveActivityController.shared.isAvailable ? "Live Activity" : "Notification (Live Activities off)"
     }
 
     private var statusText: String {

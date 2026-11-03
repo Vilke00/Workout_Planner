@@ -23,6 +23,7 @@ targets:
     platform: iOS
     sources:
       - path: GymPlan
+      - path: Shared
       - path: ExerciseData/exercises.json
         buildPhase: resources
       - path: ExerciseImages
@@ -30,6 +31,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: CoreXLSX
+      - target: GymPlanWidgets
     info:
       path: GymPlan/Info.plist
       properties:
@@ -39,16 +41,39 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
+        NSSupportsLiveActivities: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gymplan.app
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MAIN_APP"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: YES
         CODE_SIGN_STYLE: Manual
+
+  GymPlanWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: GymPlanWidgets
+      - path: Shared
+    info:
+      path: GymPlanWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Gym Plan
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gymplan.app.widgets
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Manual
+        SKIP_INSTALL: YES
 
 schemes:
   GymPlan:

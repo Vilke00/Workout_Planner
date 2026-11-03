@@ -30,6 +30,11 @@ final class WorkoutManager {
         }
         startTicker()
         if AppSettings.keepAlive { AlertSoundPlayer.shared.startKeepAlive() }
+        if let s = session {
+            LiveActivityController.shared.restore(routineName: s.routineName,
+                                                  startDate: s.startDate,
+                                                  state: activityState(s))
+        }
         updateControlNotification()
     }
 
@@ -63,6 +68,11 @@ final class WorkoutManager {
         startTicker()
         NotificationManager.shared.requestAuthorization()
         if AppSettings.keepAlive { AlertSoundPlayer.shared.startKeepAlive() }
+        if let s = session {
+            LiveActivityController.shared.start(routineName: s.routineName,
+                                                startDate: s.startDate,
+                                                state: activityState(s))
+        }
         updateControlNotification()
         isPresented = true
     }
@@ -101,6 +111,7 @@ final class WorkoutManager {
         Persistence.remove("session.json")
         NotificationManager.shared.clearAll()
         AlertSoundPlayer.shared.stopKeepAlive()
+        LiveActivityController.shared.endAll()
     }
 
     func openFromNotification() {
@@ -243,7 +254,19 @@ final class WorkoutManager {
         afterChange(restChanged: true)
     }
 
-    // MARK: Notifications
+    // MARK: Lock screen controls
+
+    /// From the Live Activity +/− buttons. value 0 = reps (or minutes), 1 = kg (or meters).
+    func adjustFromControls(value: Int, direction: Int) {
+        guard let s = session, let step = s.currentStep else { return }
+        let sign = direction < 0 ? -1.0 : 1.0
+        switch (s.exercises[step.exerciseIndex].mode, value) {
+        case (.weightReps, 0): adjust(.reps, by: sign)
+        case (.weightReps, _): adjust(.weight, by: sign * AppSettings.weightStep)
+        case (.timeDistance, 0): adjust(.minutes, by: sign * 0.5)
+        case (.timeDistance, _): adjust(.meters, by: sign * 50)
+        }
+    }
 
     func handleNotificationAction(_ id: String, text: String?) {
         guard let s = session else { return }
@@ -326,8 +349,39 @@ final class WorkoutManager {
         return ("Rest is over", body, category)
     }
 
+    private func activityState(_ s: WorkoutSession) -> WorkoutActivityAttributes.ContentState {
+        var restStart: Date? = nil
+        if let end = s.restEndDate {
+            restStart = end.addingTimeInterval(-TimeInterval(max(s.restDuration, 1)))
+        }
+        guard let step = s.currentStep else {
+            return WorkoutActivityAttributes.ContentState(exerciseName: s.routineName,
+                                                          setNumber: 0, setCount: 0, isTime: false,
+                                                          firstValue: "", secondValue: "",
+                                                          restStart: nil, restEnd: nil, finished: true)
+        }
+        let ex = s.exercises[step.exerciseIndex]
+        let set = ex.sets[step.setIndex]
+        let isTime = ex.mode == .timeDistance
+        return WorkoutActivityAttributes.ContentState(exerciseName: ex.name,
+                                                      setNumber: step.setIndex + 1,
+                                                      setCount: ex.sets.count,
+                                                      isTime: isTime,
+                                                      firstValue: isTime ? Fmt.num(set.minutes) : String(set.reps),
+                                                      secondValue: isTime ? Fmt.num(set.meters) : Fmt.num(set.weight),
+                                                      restStart: restStart,
+                                                      restEnd: s.restEndDate,
+                                                      finished: false)
+    }
+
+    /// Live Activity when it runs (normal install), otherwise the control notification (LiveContainer).
     private func updateControlNotification() {
         guard let s = session else {
+            NotificationManager.shared.removeControl()
+            return
+        }
+        if LiveActivityController.shared.isRunning {
+            LiveActivityController.shared.update(activityState(s))
             NotificationManager.shared.removeControl()
             return
         }
