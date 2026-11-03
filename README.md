@@ -30,15 +30,17 @@ Aplikacija sama bira način; trenutni se vidi u Settings → Notifications → L
 
 Settings → **Import from Excel / CSV**. Šablon: `docs/GymPlan_import_template.xlsx`.
 
-| Routine | Exercise | Rest | Set 1 | Set 2 | Set 3 |
-|---|---|---|---|---|---|
-| Upper | Barbell Bench Press - Medium Grip | 1:30 | 10x60 | 8x65 | 6x70 |
-| Upper | Pullups | 2:00 | 8 | 8 | 6 |
-| Lower | Plank | 60 | 1 min | 1 min | |
-| Cardio | Running, Treadmill | | 20 min 3000 m | | |
+| Routine | Exercise | Superset | Rest | Set 1 | Set 2 | Set 3 |
+|---|---|---|---|---|---|---|
+| Upper | Barbell Bench Press - Medium Grip | | 1:30 | 10x60 | 8x65 | 6x70 |
+| Upper | Pullups | + | 2:00 | 8 | 8 | 6 |
+| Upper | Dumbbell Shoulder Press | | 2:00 | 12x16 | 10x18 | |
+| Lower | Plank | | 60 | 1 min | 1 min | |
+| Cardio | Running, Treadmill | | | 20 min 3000 m | | |
 
 - Set ćelija: `10x60` (ponavljanja × kg), `12` (bez tega), `1 min`, `30 s`, `400 m`, `5 km`.
 - Rest: `90`, `1:30`, `2 min`, prazno = Off.
+- Superset: `+` spaja vežbu sa vežbom u sledećem redu.
 - Vežbe se traže po imenu u bazi; nepoznata imena postaju custom vežbe.
 
 ## Struktura

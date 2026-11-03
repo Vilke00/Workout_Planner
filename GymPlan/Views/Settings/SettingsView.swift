@@ -268,7 +268,8 @@ struct ImportPreviewView: View {
     }
 
     private func summary(_ exercise: ImportedExercise) -> String {
-        "\(Fmt.setsSummary(exercise.sets, mode: exercise.mode)) · Rest \(Fmt.rest(exercise.restSeconds))"
+        let base = "\(Fmt.setsSummary(exercise.sets, mode: exercise.mode)) · Rest \(Fmt.rest(exercise.restSeconds))"
+        return exercise.supersetWithNext ? base + " · + superset with next" : base
     }
 
     private func runImport() {
@@ -291,7 +292,7 @@ struct ImportFormatHelpView: View {
         List {
             Section {
                 Text("The first row holds the column names. Use one row per exercise:")
-                Text("Routine | Exercise | Rest | Set 1 | Set 2 | Set 3 …")
+                Text("Routine | Exercise | Superset | Rest | Set 1 | Set 2 …")
                     .font(.system(.footnote, design: .monospaced))
             } header: {
                 Text("Layout")
@@ -313,6 +314,12 @@ struct ImportFormatHelpView: View {
                 example("(empty)", "Off")
             } header: {
                 Text("Rest cells")
+            }
+            Section {
+                example("+", "Superset with the next row")
+                example("(empty)", "Normal exercise")
+            } header: {
+                Text("Superset column (optional)")
             }
             Section {
                 Text("You can also use one row per set with the columns Routine, Exercise, Reps, Kg, Time (min), Distance (m) and Rest. An empty Exercise cell continues the exercise above.")

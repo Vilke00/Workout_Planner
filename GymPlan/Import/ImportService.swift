@@ -8,6 +8,8 @@ struct ImportedExercise: Identifiable {
     var mode: TrackingMode
     var sets: [SetTemplate]
     var restSeconds: Int
+    /// "+" in the Superset column: chained with the next exercise.
+    var supersetWithNext: Bool = false
 }
 
 struct ImportedRoutine: Identifiable {
@@ -189,6 +191,7 @@ enum ImportService {
         }
         let routineColumn = column(["routine", "rutina", "day", "dan", "workout", "trening"])
         let restColumn = column(["rest", "odmor", "pauza"])
+        let supersetColumn = column(["superset", "ss", "link"])
         let repsColumn = column(["reps", "rep", "ponavljanja", "ponavljanje"])
         let setColumns = header.indices.filter { isSetColumn(header[$0]) }
 
@@ -221,7 +224,8 @@ enum ImportService {
                 let exercise = ImportedExercise(name: name,
                                                 mode: isTime ? .timeDistance : .weightReps,
                                                 sets: sets,
-                                                restSeconds: parseRest(cell(restColumn)))
+                                                restSeconds: parseRest(cell(restColumn)),
+                                                supersetWithNext: isLinked(cell(supersetColumn)))
                 append(exercise, routine: currentRoutine, to: &result)
             }
         } else {
@@ -260,11 +264,13 @@ enum ImportService {
                     result[r].exercises[e].sets.append(set)
                     if isTime { result[r].exercises[e].mode = .timeDistance }
                     if result[r].exercises[e].restSeconds == 0 { result[r].exercises[e].restSeconds = rest }
+                    if isLinked(cell(supersetColumn)) { result[r].exercises[e].supersetWithNext = true }
                 } else {
                     let exercise = ImportedExercise(name: name,
                                                     mode: isTime ? .timeDistance : .weightReps,
                                                     sets: [set],
-                                                    restSeconds: rest)
+                                                    restSeconds: rest,
+                                                    supersetWithNext: isLinked(cell(supersetColumn)))
                     append(exercise, routine: currentRoutine, to: &result)
                 }
                 lastName = name
@@ -282,6 +288,10 @@ enum ImportService {
     }
 
     // MARK: - Cell parsing
+
+    static func isLinked(_ raw: String) -> Bool {
+        ["+", "yes", "y", "da", "x", "1", "true", "superset", "ss"].contains(raw.lowercased().trimmed)
+    }
 
     static func normalizeHeader(_ text: String) -> String {
         let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()

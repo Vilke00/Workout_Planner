@@ -304,9 +304,14 @@ final class AppStore {
                     result.customCreated.append(item.name)
                 }
                 let routineExercise = RoutineExercise(exerciseID: exerciseID, mode: item.mode,
-                                                      sets: item.sets, restSeconds: item.restSeconds)
+                                                      sets: item.sets, restSeconds: item.restSeconds,
+                                                      supersetWithNext: item.supersetWithNext)
                 plans[planIndex].routines[routineIndex].exercises.append(routineExercise)
                 result.exercisesAdded += 1
+            }
+            // The last exercise of a routine can't be chained to anything.
+            if let last = plans[planIndex].routines[routineIndex].exercises.indices.last {
+                plans[planIndex].routines[routineIndex].exercises[last].supersetWithNext = false
             }
         }
 
