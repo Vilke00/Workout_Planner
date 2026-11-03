@@ -11,10 +11,6 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Keys.keepAlive) private var keepAlive = true
     @AppStorage(AppSettings.Keys.weightStep) private var weightStep = 2.5
 
-    @State private var showImporter = false
-    @State private var preview: ImportPreview?
-    @State private var importError: String?
-    @State private var showError = false
     @State private var showClearHistory = false
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
 
@@ -28,19 +24,6 @@ struct SettingsView: View {
                 aboutSection
             }
             .navigationTitle("Settings")
-            .fileImporter(isPresented: $showImporter,
-                          allowedContentTypes: ImportService.contentTypes,
-                          allowsMultipleSelection: false) { result in
-                handleImport(result)
-            }
-            .sheet(item: $preview) { item in
-                ImportPreviewView(preview: item)
-            }
-            .alert("Import failed", isPresented: $showError) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(importError ?? "Unknown error")
-            }
             .alert("Delete all workout history?", isPresented: $showClearHistory) {
                 Button("Delete", role: .destructive) { store.clearLogs() }
                 Button("Cancel", role: .cancel) {}
@@ -56,7 +39,7 @@ struct SettingsView: View {
     private var importSection: some View {
         Section {
             Button {
-                showImporter = true
+                ImportCoordinator.shared.pickFile()
             } label: {
                 Label("Import from Excel / CSV", systemImage: "square.and.arrow.down")
             }
@@ -68,7 +51,7 @@ struct SettingsView: View {
         } header: {
             Text("Import")
         } footer: {
-            Text("Each row is an exercise with its sets and rest time. Exercises are matched to the library by name; unknown names are added as custom exercises.")
+            Text("Each row is an exercise with its sets and rest time. Exercises are matched to the library by name; unknown names are added as custom exercises. You can also share an .xlsx or .csv file to Gym Plan from Files or Mail.")
         }
     }
 
@@ -169,28 +152,6 @@ struct SettingsView: View {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let status = settings.authorizationStatus
         await MainActor.run { notificationStatus = status }
-    }
-
-    private func handleImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .failure(let error):
-            importError = error.localizedDescription
-            showError = true
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            do {
-                let routines = try ImportService.parse(url: url)
-                if routines.isEmpty {
-                    importError = "No exercises were found in \(url.lastPathComponent)."
-                    showError = true
-                } else {
-                    preview = ImportPreview(fileName: url.lastPathComponent, routines: routines)
-                }
-            } catch {
-                importError = error.localizedDescription
-                showError = true
-            }
-        }
     }
 }
 
