@@ -1,0 +1,9 @@
+GymPlan.xcodeproj/
+build/
+Payload/
+*.ipa
+ExerciseData/
+ExerciseImages/
+.DS_Store
+DerivedData/
+xcuserdata/

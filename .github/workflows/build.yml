@@ -1,0 +1,116 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exercise database (free-exercise-db, public domain)
+        run: |
+          git clone --depth 1 https://github.com/yuhonas/free-exercise-db.git "$RUNNER_TEMP/fedb"
+          mkdir -p ExerciseData ExerciseImages
+          cp "$RUNNER_TEMP/fedb/dist/exercises.json" ExerciseData/exercises.json
+          count=0
+          for d in "$RUNNER_TEMP"/fedb/exercises/*/; do
+            id=$(basename "$d")
+            for i in 0 1; do
+              if [ -f "$d$i.jpg" ]; then
+                sips -s format jpeg -s formatOptions 55 -Z 360 "$d$i.jpg" --out "ExerciseImages/${id}_$i.jpg" > /dev/null 2>&1 || cp "$d$i.jpg" "ExerciseImages/${id}_$i.jpg"
+                count=$((count+1))
+              fi
+            done
+          done
+          echo "Processed $count images"
+          du -sh ExerciseImages
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          set -o pipefail
+          xcodegen generate 2>&1 | tee xcodegen.log
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build app (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project GymPlan.xcodeproj \
+            -scheme GymPlan \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|warning: .*GymPlan/|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            build.log
+            xcodegen.log
+
+      - name: Package IPA
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "App: $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry GymPlan.ipa Payload
+          ls -lh GymPlan.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymPlan-ipa
+          path: GymPlan.ipa
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" GymPlan.ipa \
+            --title "Gym Plan build ${{ github.run_number }}" \
+            --notes "Commit ${{ github.sha }}. Download GymPlan.ipa on your iPhone and install it with LiveContainer, SideStore, AltStore or Sideloadly." \
+            --latest
+
+      # Saves the result and compiler errors to the "ci-logs" branch so they can be read with git.
+      - name: Save build result to ci-logs branch
+        if: always()
+        run: |
+          OUT="$RUNNER_TEMP/ci-logs"
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          echo "status=${{ job.status }} run=${{ github.run_number }} sha=${{ github.sha }}" > "$OUT/status.txt"
+          [ -f xcodegen.log ] && cp xcodegen.log "$OUT/"
+          if [ -f build.log ]; then
+            grep -E "error:|error -|fatal error|BUILD (SUCCEEDED|FAILED)" build.log | sort -u | head -400 > "$OUT/errors.txt" || true
+            grep -E -B2 -A6 "error:" build.log | head -2000 > "$OUT/errors-context.txt" || true
+            tail -300 build.log > "$OUT/build-tail.txt"
+          fi
+          cd "$OUT"
+          git init -q -b ci-logs
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Build ${{ github.run_number }}: ${{ job.status }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-logs
