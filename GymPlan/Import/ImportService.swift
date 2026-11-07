@@ -22,14 +22,12 @@ enum ImportError: LocalizedError {
     case unreadable
     case empty
     case noExerciseColumn
-    case unsupported(String)
 
     var errorDescription: String? {
         switch self {
         case .unreadable: return "The file could not be read. Use an .xlsx or .csv file."
         case .empty: return "The file has no rows."
         case .noExerciseColumn: return "No \"Exercise\" column found in the first row."
-        case .unsupported(let ext): return "\".\(ext)\" files can't be read. In Excel or Numbers export the table as .xlsx or .csv."
         }
     }
 }
@@ -69,16 +67,8 @@ enum ImportService {
         try FileManager.default.copyItem(at: url, to: local)
         defer { try? FileManager.default.removeItem(at: local) }
 
-        let ext = url.pathExtension.lowercased()
-        if ["xls", "numbers", "ods", "pdf", "docx"].contains(ext) {
-            throw ImportError.unsupported(ext)
-        }
-        // .xlsx files are zip archives and start with "PK".
-        let bytes = (try? Data(contentsOf: local, options: .mappedIfSafe)) ?? Data()
-        let isZip = bytes.count >= 2 && bytes[bytes.startIndex] == 0x50 && bytes[bytes.startIndex + 1] == 0x4B
-
         let rows: [[String]]
-        if ext == "xlsx" || isZip {
+        if url.pathExtension.lowercased() == "xlsx" {
             rows = try xlsxRows(local)
         } else {
             rows = try csvRows(local)

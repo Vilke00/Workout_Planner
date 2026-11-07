@@ -42,13 +42,6 @@ targets:
         UIBackgroundModes:
           - audio
         NSSupportsLiveActivities: true
-        LSSupportsOpeningDocumentsInPlace: false
-        CFBundleDocumentTypes:
-          - CFBundleTypeName: Workout Table
-            LSHandlerRank: Alternate
-            LSItemContentTypes:
-              - org.openxmlformats.spreadsheetml.sheet
-              - public.comma-separated-values-text
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
