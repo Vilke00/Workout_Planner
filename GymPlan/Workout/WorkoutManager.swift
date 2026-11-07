@@ -219,6 +219,43 @@ final class WorkoutManager {
         return true
     }
 
+    /// Sets a value typed by hand (e.g. 200 kg) on any set, also on sets already done.
+    func setValue(_ field: Field, to value: Double, exerciseIndex e: Int, setIndex i: Int) {
+        guard var s = session,
+              s.exercises.indices.contains(e),
+              s.exercises[e].sets.indices.contains(i) else { return }
+        let v = value.isFinite ? max(0, value) : 0
+        var set = s.exercises[e].sets[i]
+        switch field {
+        case .reps: set.reps = Int(min(v, 10_000).rounded())
+        case .weight: set.weight = min(v, 10_000)
+        case .minutes: set.minutes = min(v, 10_000)
+        case .meters: set.meters = min(v, 1_000_000)
+        }
+        guard set != s.exercises[e].sets[i] else { return }
+        s.exercises[e].sets[i] = set
+        session = s
+        persist()
+        updateControlNotification()
+    }
+
+    /// Fixes a set entered by mistake: mark a done set as not done / skipped, or a skipped one as done.
+    func setStatus(_ status: SetStatus, exerciseIndex e: Int, setIndex i: Int) {
+        guard var s = session,
+              s.exercises.indices.contains(e),
+              s.exercises[e].sets.indices.contains(i) else { return }
+        s.exercises[e].sets[i].status = status
+        if s.isFinished {
+            // Everything was done and a set was reopened: make it the current one.
+            s.advance()
+        } else if let step = s.currentStep, !s.isPending(step) {
+            s.advance()
+        }
+        session = s
+        persist()
+        updateControlNotification()
+    }
+
     // MARK: Rest timer
 
     func adjustRest(by seconds: Int) {

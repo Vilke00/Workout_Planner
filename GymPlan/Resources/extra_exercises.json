@@ -1,0 +1,21 @@
+[
+  {
+    "id": "Chest_Supported_Dumbbell_Rear_Delt_Row",
+    "name": "Chest-Supported Dumbbell Rear Delt Row (Incline Bench)",
+    "primaryMuscles": ["shoulders"],
+    "secondaryMuscles": ["middle back", "traps"],
+    "equipment": "dumbbell",
+    "category": "strength",
+    "level": "beginner",
+    "instructions": [
+      "Set an adjustable bench to a low incline and lie face down with your chest supported on the pad, a dumbbell in each hand.",
+      "Let the arms hang straight down with palms facing each other and elbows slightly bent.",
+      "Raise the dumbbells out to the sides until the elbows reach shoulder height, squeezing the rear delts and upper back.",
+      "Lower under control and repeat. Keep your chest on the bench the whole time."
+    ],
+    "images": [
+      "Dumbbell_Lying_Rear_Lateral_Raise/0.jpg",
+      "Dumbbell_Lying_Rear_Lateral_Raise/1.jpg"
+    ]
+  }
+]

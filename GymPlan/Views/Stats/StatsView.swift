@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct StatsView: View {
     enum Page: String, CaseIterable, Identifiable {
@@ -50,7 +51,7 @@ struct WorkoutLogList: View {
                 LazyVStack(spacing: 12) {
                     ForEach(store.logs) { log in
                         NavigationLink {
-                            WorkoutLogDetailView(log: log)
+                            WorkoutLogDetailView(logID: log.id)
                         } label: {
                             WorkoutLogCard(log: log)
                         }
@@ -120,39 +121,153 @@ struct WorkoutLogCard: View {
 }
 
 struct WorkoutLogDetailView: View {
-    let log: WorkoutLog
+    let logID: UUID
+
+    @Environment(AppStore.self) private var store
+    @State private var editTarget: LoggedSetRef?
 
     var body: some View {
-        List {
-            Section {
-                HStack {
-                    Spacer()
-                    BodyMapView(primary: log.primaryMuscles, secondary: log.secondaryMuscles)
-                        .frame(height: 200)
-                    Spacer()
+        if let log = store.logs.first(where: { $0.id == logID }) {
+            List {
+                Section {
+                    HStack {
+                        Spacer()
+                        BodyMapView(primary: log.primaryMuscles, secondary: log.secondaryMuscles)
+                            .frame(height: 200)
+                        Spacer()
+                    }
+                    LabeledContent("Duration", value: Fmt.duration(log.duration))
+                    LabeledContent("Sets", value: "\(log.totalSets)")
+                    if log.volume > 0 {
+                        LabeledContent("Volume", value: "\(Fmt.num(log.volume)) kg")
+                    }
                 }
-                LabeledContent("Duration", value: Fmt.duration(log.duration))
-                LabeledContent("Sets", value: "\(log.totalSets)")
-                if log.volume > 0 {
-                    LabeledContent("Volume", value: "\(Fmt.num(log.volume)) kg")
-                }
-            }
-            ForEach(log.exercises) { exercise in
-                Section(exercise.name) {
-                    ForEach(Array(exercise.sets.enumerated()), id: \.offset) { index, set in
-                        HStack {
-                            Text("Set \(index + 1)")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(Fmt.setValue(set, mode: exercise.mode))
-                                .font(.body.monospacedDigit())
+                ForEach(log.exercises) { exercise in
+                    Section {
+                        ForEach(Array(exercise.sets.enumerated()), id: \.offset) { index, set in
+                            Button {
+                                editTarget = LoggedSetRef(logID: log.id, exerciseID: exercise.id, setIndex: index,
+                                                          mode: exercise.mode, name: exercise.name, set: set)
+                            } label: {
+                                HStack {
+                                    Text("Set \(index + 1)")
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(Fmt.setValue(set, mode: exercise.mode))
+                                        .font(.body.monospacedDigit())
+                                        .foregroundStyle(.primary)
+                                    Image(systemName: "pencil")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    store.deleteLoggedSet(logID: log.id, exerciseID: exercise.id, setIndex: index)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    } header: {
+                        Text(exercise.name)
+                    } footer: {
+                        if exercise.id == log.exercises.last?.id {
+                            Text("Tap a set to fix it, swipe left to delete it.")
                         }
                     }
                 }
             }
+            .navigationTitle(log.routineName)
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $editTarget) { target in
+                EditLoggedSetSheet(target: target)
+            }
+        } else {
+            ContentUnavailableView("Workout deleted", systemImage: "trash")
         }
-        .navigationTitle(log.routineName)
-        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct LoggedSetRef: Identifiable {
+    let id = UUID()
+    let logID: UUID
+    let exerciseID: UUID
+    let setIndex: Int
+    let mode: TrackingMode
+    let name: String
+    let set: LoggedSet
+}
+
+/// Fix a set of a finished workout.
+struct EditLoggedSetSheet: View {
+    let target: LoggedSetRef
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var first = ""
+    @State private var second = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    field(target.mode.firstLabel, text: $first, integer: target.mode == .weightReps)
+                    field(target.mode.secondLabel, text: $second, integer: false)
+                } header: {
+                    Text("\(target.name) · Set \(target.setIndex + 1)")
+                }
+            }
+            .navigationTitle("Edit Set")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .bold()
+                }
+            }
+        }
+        .presentationDetents([.height(280)])
+        .onAppear {
+            let set = target.set
+            switch target.mode {
+            case .weightReps:
+                first = String(set.reps)
+                second = Fmt.num(set.weight)
+            case .timeDistance:
+                first = Fmt.num(set.minutes)
+                second = Fmt.num(set.meters)
+            }
+        }
+    }
+
+    private func field(_ label: String, text: Binding<String>, integer: Bool) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField("0", text: text)
+                .keyboardType(integer ? .numberPad : .decimalPad)
+                .multilineTextAlignment(.trailing)
+                .font(.body.weight(.semibold).monospacedDigit())
+                .frame(width: 120)
+        }
+    }
+
+    private func save() {
+        var set = target.set
+        switch target.mode {
+        case .weightReps:
+            set.reps = Fmt.parseInt(first)
+            set.weight = Fmt.parseDouble(second)
+        case .timeDistance:
+            set.minutes = Fmt.parseDouble(first)
+            set.meters = Fmt.parseDouble(second)
+        }
+        store.updateLoggedSet(logID: target.logID, exerciseID: target.exerciseID, setIndex: target.setIndex, set: set)
+        dismiss()
     }
 }
 

@@ -53,13 +53,21 @@ final class AppStore {
 
     // MARK: - Library
 
+    /// free-exercise-db (downloaded at build time) + our own additions in extra_exercises.json.
     private static func loadLibrary() -> [Exercise] {
-        guard let url = Bundle.main.url(forResource: "exercises", withExtension: "json"),
+        let base = decodeBundled("exercises")
+        let extra = decodeBundled("extra_exercises")
+        let known = Set(base.map(\.id))
+        return base + extra.filter { !known.contains($0.id) }
+    }
+
+    private static func decodeBundled(_ name: String) -> [Exercise] {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return [] }
         do {
             return try JSONDecoder().decode([Exercise].self, from: data)
         } catch {
-            print("Exercise library decode failed: \(error)")
+            print("Exercise library \(name) decode failed: \(error)")
             return []
         }
     }
@@ -214,6 +222,25 @@ final class AppStore {
 
     func deleteLog(_ id: UUID) {
         logs.removeAll { $0.id == id }
+        saveLogs()
+    }
+
+    func updateLoggedSet(logID: UUID, exerciseID: UUID, setIndex: Int, set: LoggedSet) {
+        guard let l = logs.firstIndex(where: { $0.id == logID }),
+              let e = logs[l].exercises.firstIndex(where: { $0.id == exerciseID }),
+              logs[l].exercises[e].sets.indices.contains(setIndex) else { return }
+        logs[l].exercises[e].sets[setIndex] = set
+        saveLogs()
+    }
+
+    func deleteLoggedSet(logID: UUID, exerciseID: UUID, setIndex: Int) {
+        guard let l = logs.firstIndex(where: { $0.id == logID }),
+              let e = logs[l].exercises.firstIndex(where: { $0.id == exerciseID }),
+              logs[l].exercises[e].sets.indices.contains(setIndex) else { return }
+        logs[l].exercises[e].sets.remove(at: setIndex)
+        if logs[l].exercises[e].sets.isEmpty {
+            logs[l].exercises.remove(at: e)
+        }
         saveLogs()
     }
 

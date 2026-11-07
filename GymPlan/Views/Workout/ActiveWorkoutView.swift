@@ -1,23 +1,42 @@
 import SwiftUI
+import UIKit
 
-/// Full-screen workout: total timer, exercise line, image, sets, and X / rest timer / Done bar.
+/// A set in the workout: exercise index + set index.
+struct SetRef: Hashable {
+    let exercise: Int
+    let set: Int
+}
+
+/// Full-screen workout: total timer, exercise line, swipeable exercise pages, and X / rest timer / Done bar.
 struct ActiveWorkoutView: View {
     @Environment(WorkoutManager.self) private var workout
     @Environment(AppStore.self) private var store
     @AppStorage(AppSettings.Keys.weightStep) private var weightStep = 2.5
 
-    @State private var viewedExercise: Int?
+    /// Exercise shown on screen. Swiping only changes what you look at, not the current set.
+    @State private var page = 0
+    @State private var editing: SetRef?
     @State private var historyTarget: SessionExercise?
     @State private var showEndOptions = false
     @State private var doneCount = 0
 
     var body: some View {
-        Group {
-            if let session = workout.session, !session.exercises.isEmpty {
-                content(session)
-            } else {
-                Color(uiColor: .systemBackground)
-                    .onAppear { workout.isPresented = false }
+        NavigationStack {
+            Group {
+                if let session = workout.session, !session.exercises.isEmpty {
+                    content(session)
+                } else {
+                    Color(uiColor: .systemBackground)
+                        .onAppear { workout.isPresented = false }
+                }
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("OK") { hideKeyboard() }
+                        .bold()
+                }
             }
         }
         .sheet(item: $historyTarget) { item in
@@ -37,57 +56,101 @@ struct ActiveWorkoutView: View {
             Button("Cancel", role: .cancel) {}
         }
         .sensoryFeedback(.success, trigger: doneCount)
-        .onChange(of: workout.session?.stepIndex) { _, _ in
-            viewedExercise = nil
+        .onAppear {
+            if let s = workout.session { page = currentExercise(s) }
         }
+        .onChange(of: workout.session?.stepIndex) { _, _ in
+            editing = nil
+            guard let s = workout.session, !s.isFinished else { return }
+            withAnimation(.easeInOut(duration: 0.3)) { page = currentExercise(s) }
+        }
+    }
+
+    private func currentExercise(_ s: WorkoutSession) -> Int {
+        s.currentStep?.exerciseIndex ?? max(0, s.exercises.count - 1)
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     // MARK: Layout
 
     @ViewBuilder
     private func content(_ s: WorkoutSession) -> some View {
-        let currentIndex = s.currentStep?.exerciseIndex ?? (s.exercises.count - 1)
-        let shownIndex = min(max(viewedExercise ?? currentIndex, 0), s.exercises.count - 1)
-        let exercise = s.exercises[shownIndex]
+        let shown = min(max(page, 0), s.exercises.count - 1)
 
         VStack(spacing: 0) {
             topBar(s)
 
             ExerciseProgressLine(count: s.exercises.count,
-                                 current: shownIndex,
+                                 current: shown,
                                  completed: s.exercises.indices.map { s.isExerciseComplete($0) }) { index in
-                if workout.jump(toExercise: index) {
-                    viewedExercise = nil
-                } else {
-                    viewedExercise = index
-                }
+                _ = workout.jump(toExercise: index)
+                withAnimation(.easeInOut(duration: 0.3)) { page = index }
             }
             .padding(.vertical, 10)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ExerciseImageView(exercise: store.exercise(exercise.exerciseID), animated: true, fill: false)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 230)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-
-                    titleRow(exercise, inSuperset: s.isInSuperset(shownIndex))
-
-                    setsList(s, exerciseIndex: shownIndex)
+            TabView(selection: $page) {
+                ForEach(s.exercises.indices, id: \.self) { index in
+                    exercisePage(s, exerciseIndex: index)
+                        .tag(index)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 24)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
 
             bottomBar(s)
         }
         .background(Theme.background)
     }
 
+    private func exercisePage(_ s: WorkoutSession, exerciseIndex: Int) -> some View {
+        let exercise = s.exercises[exerciseIndex]
+        let isCurrentExercise = s.currentStep?.exerciseIndex == exerciseIndex
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ExerciseImageView(exercise: store.exercise(exercise.exerciseID), animated: true, fill: false)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 230)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                titleRow(exercise, inSuperset: s.isInSuperset(exerciseIndex))
+
+                if !isCurrentExercise && !s.isFinished {
+                    backToCurrent(s)
+                }
+
+                setsList(s, exerciseIndex: exerciseIndex)
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// Shown when you swiped away from the exercise you're doing.
+    private func backToCurrent(_ s: WorkoutSession) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.3)) { page = currentExercise(s) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.uturn.backward")
+                Text("Back to current: \(s.exercises[currentExercise(s)].name)")
+                    .lineLimit(1)
+            }
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Theme.accent.opacity(0.14)))
+        }
+        .foregroundStyle(Theme.accent)
+    }
+
     private func topBar(_ s: WorkoutSession) -> some View {
         HStack {
             Button {
+                hideKeyboard()
                 workout.isPresented = false
             } label: {
                 Image(systemName: "chevron.down")
@@ -112,6 +175,7 @@ struct ActiveWorkoutView: View {
             Spacer()
 
             Button {
+                hideKeyboard()
                 showEndOptions = true
             } label: {
                 Image(systemName: "flag.checkered")
@@ -156,16 +220,34 @@ struct ActiveWorkoutView: View {
         let exercise = s.exercises[exerciseIndex]
         return VStack(spacing: 8) {
             ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
+                let ref = SetRef(exercise: exerciseIndex, set: index)
                 ActiveSetRow(number: index + 1,
                              set: set,
                              mode: exercise.mode,
                              isCurrent: s.currentStep?.exerciseIndex == exerciseIndex && s.currentStep?.setIndex == index,
+                             isEditing: editing == ref,
                              weightStep: weightStep,
                              onAdjust: { field, delta in
                                  workout.adjust(field, by: delta, exerciseIndex: exerciseIndex, setIndex: index)
                              },
-                             onSelect: {
-                                 _ = workout.jump(toExercise: exerciseIndex, set: index)
+                             onSetValue: { field, value in
+                                 workout.setValue(field, to: value, exerciseIndex: exerciseIndex, setIndex: index)
+                             },
+                             onTap: {
+                                 if set.status == .pending {
+                                     _ = workout.jump(toExercise: exerciseIndex, set: index)
+                                 } else {
+                                     withAnimation(.snappy) { editing = ref }
+                                 }
+                             },
+                             onCloseEdit: {
+                                 hideKeyboard()
+                                 withAnimation(.snappy) { editing = nil }
+                             },
+                             onStatus: { status in
+                                 hideKeyboard()
+                                 editing = nil
+                                 workout.setStatus(status, exerciseIndex: exerciseIndex, setIndex: index)
                              })
             }
         }
@@ -177,6 +259,7 @@ struct ActiveWorkoutView: View {
             Divider()
             if s.isFinished {
                 Button {
+                    hideKeyboard()
                     workout.finish()
                 } label: {
                     Text("Finish")
@@ -191,6 +274,7 @@ struct ActiveWorkoutView: View {
             } else {
                 HStack(spacing: 14) {
                     Button {
+                        hideKeyboard()
                         workout.skipCurrentSet()
                     } label: {
                         Image(systemName: "xmark")
@@ -204,6 +288,7 @@ struct ActiveWorkoutView: View {
                         .frame(maxWidth: .infinity)
 
                     Button {
+                        hideKeyboard()
                         workout.completeCurrentSet()
                         doneCount += 1
                     } label: {
@@ -289,20 +374,22 @@ struct ActiveSetRow: View {
     let set: SessionSet
     let mode: TrackingMode
     let isCurrent: Bool
+    let isEditing: Bool
     let weightStep: Double
     let onAdjust: (WorkoutManager.Field, Double) -> Void
-    let onSelect: () -> Void
+    let onSetValue: (WorkoutManager.Field, Double) -> Void
+    /// Tap on a row that isn't current: pending → make it current, done/skipped → edit it.
+    let onTap: () -> Void
+    let onCloseEdit: () -> Void
+    let onStatus: (SetStatus) -> Void
+
+    private var showsEditors: Bool { isCurrent || isEditing }
+    private var highlight: Color { isEditing ? Color.orange : Theme.accent }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("SET \(number)")
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(isCurrent ? Theme.accent : Color.secondary)
-                Spacer()
-                statusIcon
-            }
-            if isCurrent {
+            header
+            if showsEditors {
                 steppers
             } else {
                 Text(Fmt.setValue(set, mode: mode))
@@ -313,12 +400,52 @@ struct ActiveSetRow: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(isCurrent ? Theme.accent.opacity(0.14) : Theme.card))
+            .fill(showsEditors ? highlight.opacity(0.14) : Theme.card))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(isCurrent ? Theme.accent : Color.clear, lineWidth: 2))
+            .strokeBorder(showsEditors ? highlight : Color.clear, lineWidth: 2))
         .contentShape(Rectangle())
-        .onTapGesture {
-            if !isCurrent && set.status == .pending { onSelect() }
+        // The row tap is off while editors are shown so it never steals taps from the text fields.
+        .gesture(TapGesture().onEnded { onTap() }, including: showsEditors ? .subviews : .all)
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        HStack(spacing: 10) {
+            Text(isEditing ? "SET \(number) · EDITING" : "SET \(number)")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(showsEditors ? highlight : Color.secondary)
+            Spacer()
+            if isEditing {
+                Menu {
+                    if set.status == .done {
+                        Button { onStatus(.pending) } label: {
+                            Label("Mark as not done", systemImage: "arrow.uturn.backward")
+                        }
+                        Button { onStatus(.skipped) } label: {
+                            Label("Mark as skipped", systemImage: "xmark")
+                        }
+                    } else {
+                        Button { onStatus(.done) } label: {
+                            Label("Mark as done", systemImage: "checkmark")
+                        }
+                        Button { onStatus(.pending) } label: {
+                            Label("Mark as not done", systemImage: "arrow.uturn.backward")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .foregroundStyle(highlight)
+                }
+                Button(action: onCloseEdit) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(highlight)
+                }
+                .buttonStyle(.plain)
+            } else {
+                statusIcon
+            }
         }
     }
 
@@ -326,9 +453,19 @@ struct ActiveSetRow: View {
     private var statusIcon: some View {
         switch set.status {
         case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+            HStack(spacing: 6) {
+                Image(systemName: "pencil")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+            }
         case .skipped:
-            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: "pencil")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
         case .pending:
             if isCurrent {
                 Text("NOW").font(.caption2.weight(.heavy)).foregroundStyle(Theme.accent)
@@ -343,40 +480,58 @@ struct ActiveSetRow: View {
         switch mode {
         case .weightReps:
             HStack(spacing: 10) {
-                ValueStepper(value: "\(set.reps)", unit: "reps",
+                ValueStepper(value: Double(set.reps), unit: "reps", isInteger: true, tint: highlight,
                              onMinus: { onAdjust(.reps, -1) },
-                             onPlus: { onAdjust(.reps, 1) })
-                ValueStepper(value: Fmt.num(set.weight), unit: "kg",
+                             onPlus: { onAdjust(.reps, 1) },
+                             onSet: { onSetValue(.reps, $0) })
+                ValueStepper(value: set.weight, unit: "kg", isInteger: false, tint: highlight,
                              onMinus: { onAdjust(.weight, -weightStep) },
-                             onPlus: { onAdjust(.weight, weightStep) })
+                             onPlus: { onAdjust(.weight, weightStep) },
+                             onSet: { onSetValue(.weight, $0) })
             }
         case .timeDistance:
             HStack(spacing: 10) {
-                ValueStepper(value: Fmt.num(set.minutes), unit: "min",
+                ValueStepper(value: set.minutes, unit: "min", isInteger: false, tint: highlight,
                              onMinus: { onAdjust(.minutes, -0.5) },
-                             onPlus: { onAdjust(.minutes, 0.5) })
-                ValueStepper(value: Fmt.num(set.meters), unit: "m",
+                             onPlus: { onAdjust(.minutes, 0.5) },
+                             onSet: { onSetValue(.minutes, $0) })
+                ValueStepper(value: set.meters, unit: "m", isInteger: false, tint: highlight,
                              onMinus: { onAdjust(.meters, -50) },
-                             onPlus: { onAdjust(.meters, 50) })
+                             onPlus: { onAdjust(.meters, 50) },
+                             onSet: { onSetValue(.meters, $0) })
             }
         }
     }
 }
 
+/// − value + where the value can also be typed. Tapping the number clears it (the old value
+/// stays as a grey hint), so typing 200 replaces 60 right away.
 struct ValueStepper: View {
-    let value: String
+    let value: Double
     let unit: String
+    let isInteger: Bool
+    var tint: Color = Theme.accent
     let onMinus: () -> Void
     let onPlus: () -> Void
+    let onSet: (Double) -> Void
+
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    private var formatted: String {
+        isInteger ? String(Int(value.rounded())) : Fmt.num(value)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             stepButton("minus", action: onMinus)
             VStack(spacing: 0) {
-                Text(value)
+                TextField(formatted, text: $text)
+                    .keyboardType(isInteger ? .numberPad : .decimalPad)
+                    .multilineTextAlignment(.center)
                     .font(.title3.weight(.bold).monospacedDigit())
+                    .focused($focused)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                 Text(unit)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -385,17 +540,35 @@ struct ValueStepper: View {
             stepButton("plus", action: onPlus)
         }
         .background(Capsule().fill(Theme.background))
+        .overlay(Capsule().strokeBorder(focused ? tint : Color.clear, lineWidth: 1.5))
+        .onAppear { text = formatted }
+        .onChange(of: value) { _, _ in
+            if !focused { text = formatted }
+        }
+        .onChange(of: focused) { _, isFocused in
+            text = isFocused ? "" : formatted
+        }
+        .onChange(of: text) { _, newText in
+            guard focused else { return }
+            let cleaned = newText.trimmed.replacingOccurrences(of: ",", with: ".")
+            guard !cleaned.isEmpty, let typed = Double(cleaned), typed.isFinite, typed >= 0 else { return }
+            let newValue = isInteger ? typed.rounded() : typed
+            if abs(newValue - value) > 0.0001 { onSet(newValue) }
+        }
     }
 
     private func stepButton(_ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            focused = false
+            action()
+        } label: {
             Image(systemName: icon)
                 .font(.body.weight(.bold))
                 .frame(width: 42, height: 46)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Theme.accent)
+        .foregroundStyle(tint)
     }
 }
 
