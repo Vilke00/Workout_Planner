@@ -13,6 +13,7 @@ struct GymPlanApp: App {
                 .environment(store)
                 .environment(workout)
                 .tint(Theme.accent)
+                .preferredColorScheme(.dark)
         }
     }
 }
@@ -20,6 +21,7 @@ struct GymPlanApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        Theme.applyUIKitAppearance()
         NotificationManager.shared.configure()
         WorkoutManager.shared.restoreIfNeeded()
         return true

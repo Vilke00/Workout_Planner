@@ -10,6 +10,8 @@ final class WorkoutManager {
 
     private(set) var session: WorkoutSession?
     var isPresented = false
+    /// Shown after finishing: what the next workout will ask for.
+    var progressionSummary: String?
 
     @ObservationIgnored private var ticker: Timer?
 
@@ -43,6 +45,8 @@ final class WorkoutManager {
         let exercises: [SessionExercise] = routine.exercises.map { item in
             let info = store.exercise(item.exerciseID)
             return SessionExercise(
+                routineExerciseID: item.id,
+                target: item.target.isEmpty ? nil : item.target,
                 exerciseID: item.exerciseID,
                 name: info?.name ?? "Exercise",
                 primaryMuscles: info?.primaryMuscles ?? [],
@@ -98,7 +102,16 @@ final class WorkoutManager {
                                  exercises: logged)
             AppStore.shared.addLog(log)
         }
+        let changes = AppStore.shared.applyProgression(planID: s.planID, routineID: s.routineID,
+                                                       performed: s.exercises,
+                                                       weightStep: AppSettings.weightStep)
         end()
+        if !changes.isEmpty {
+            // Wait until the workout screen has closed before showing the summary.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                self?.progressionSummary = changes.joined(separator: "\n")
+            }
+        }
     }
 
     func discard() { end() }
@@ -381,7 +394,8 @@ final class WorkoutManager {
         }
         let ex = s.exercises[step.exerciseIndex]
         let set = ex.sets[step.setIndex]
-        let body = "Next: \(ex.name) · Set \(step.setIndex + 1)/\(ex.sets.count) · \(Fmt.setValue(set, mode: ex.mode))"
+        var body = "Next: \(ex.name) · Set \(step.setIndex + 1)/\(ex.sets.count) · \(Fmt.setValue(set, mode: ex.mode))"
+        if let target = targetText(ex) { body += " · target \(target)" }
         let category: NotificationManager.Category = ex.mode == .weightReps ? .weight : .time
         return ("Rest is over", body, category)
     }
@@ -395,7 +409,8 @@ final class WorkoutManager {
             return WorkoutActivityAttributes.ContentState(exerciseName: s.routineName,
                                                           setNumber: 0, setCount: 0, isTime: false,
                                                           firstValue: "", secondValue: "",
-                                                          restStart: nil, restEnd: nil, finished: true)
+                                                          restStart: nil, restEnd: nil, finished: true,
+                                                          target: nil)
         }
         let ex = s.exercises[step.exerciseIndex]
         let set = ex.sets[step.setIndex]
@@ -408,7 +423,14 @@ final class WorkoutManager {
                                                       secondValue: isTime ? Fmt.num(set.meters) : Fmt.num(set.weight),
                                                       restStart: restStart,
                                                       restEnd: s.restEndDate,
-                                                      finished: false)
+                                                      finished: false,
+                                                      target: targetText(ex))
+    }
+
+    /// "8–12 reps" / "AMRAP" for weight exercises with a target.
+    private func targetText(_ ex: SessionExercise) -> String? {
+        guard ex.mode == .weightReps else { return nil }
+        return ex.target?.text
     }
 
     /// Live Activity when it runs (normal install), otherwise the control notification (LiveContainer).
@@ -431,7 +453,8 @@ final class WorkoutManager {
         }
         let ex = s.exercises[step.exerciseIndex]
         let set = ex.sets[step.setIndex]
-        let subtitle = "Set \(step.setIndex + 1)/\(ex.sets.count) · \(Fmt.setValue(set, mode: ex.mode))"
+        var subtitle = "Set \(step.setIndex + 1)/\(ex.sets.count) · \(Fmt.setValue(set, mode: ex.mode))"
+        if let target = targetText(ex) { subtitle += " · target \(target)" }
         let category: NotificationManager.Category = ex.mode == .weightReps ? .weight : .time
         var body = "Started \(Fmt.time(s.startDate))"
         if let end = s.restEndDate {

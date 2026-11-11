@@ -11,7 +11,10 @@ struct GymPlanWidgetBundle: WidgetBundle {
 }
 
 private enum LAStyle {
-    static let accent = Color(red: 0.38, green: 0.40, blue: 1.0)
+    // ARK Ascended palette (same as the app's Theme).
+    static let accent = Color(red: 0x28 / 255, green: 0xB8 / 255, blue: 0xE8 / 255)
+    static let onAccent = Color(red: 0x00 / 255, green: 0x13 / 255, blue: 0x1B / 255)
+    static let text = Color(red: 0xEE / 255, green: 0xF6 / 255, blue: 0xF9 / 255)
     static let field = Color.white.opacity(0.12)
 }
 
@@ -19,8 +22,8 @@ struct WorkoutLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WorkoutActivityAttributes.self) { context in
             LockScreenWorkoutView(attributes: context.attributes, state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.82))
-                .activitySystemActionForegroundColor(Color.white)
+                .activityBackgroundTint(Color.black.opacity(0.88))
+                .activitySystemActionForegroundColor(LAStyle.text)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -72,7 +75,7 @@ struct LockScreenWorkoutView: View {
             }
             WorkoutControlsView(state: state, compact: false)
         }
-        .foregroundStyle(Color.white)
+        .foregroundStyle(LAStyle.text)
         .padding(14)
     }
 }
@@ -93,10 +96,19 @@ struct WorkoutControlsView: View {
         } else {
             VStack(spacing: compact ? 6 : 10) {
                 HStack(spacing: 6) {
-                    Text("Set \(state.setNumber)/\(state.setCount)")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .fixedSize()
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Set \(state.setNumber)/\(state.setCount)")
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .fixedSize()
+                        if let target = state.target {
+                            Text(target)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(LAStyle.accent)
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                    }
                     Spacer(minLength: 4)
                     ActivityStepper(value: state.firstValue, unit: state.firstUnit, index: 0)
                     ActivityStepper(value: state.secondValue, unit: state.secondUnit, index: 1)
@@ -116,6 +128,7 @@ struct WorkoutControlsView: View {
                     Button(intent: CompleteSetIntent()) {
                         Text("Done")
                             .font(.headline)
+                            .foregroundStyle(LAStyle.onAccent)
                             .frame(width: 76, height: 40)
                             .background(Capsule().fill(LAStyle.accent))
                     }

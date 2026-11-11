@@ -27,6 +27,7 @@ struct SettingsView: View {
                 dataSection
                 aboutSection
             }
+            .themedList()
             .navigationTitle("Settings")
             .fileImporter(isPresented: $showImporter,
                           allowedContentTypes: ImportService.contentTypes,
@@ -70,6 +71,7 @@ struct SettingsView: View {
         } footer: {
             Text("Each row is an exercise with its sets and rest time. Exercises are matched to the library by name; unknown names are added as custom exercises.")
         }
+            .listRowBackground(Theme.card)
     }
 
     private var workoutSection: some View {
@@ -88,6 +90,7 @@ struct SettingsView: View {
         } footer: {
             Text("\"Keep app awake\" lets the app beep over your music, even in silent mode and when the phone is locked. Turn it off to rely only on notifications.")
         }
+            .listRowBackground(Theme.card)
     }
 
     private var notificationSection: some View {
@@ -115,6 +118,7 @@ struct SettingsView: View {
         } footer: {
             Text("Installed with SideStore, AltStore or Sideloadly the workout is controlled from a Live Activity on the lock screen. Inside LiveContainer extensions can't run, so a notification with Done, Skip, −1 rep and Edit is used instead; enable \"Fix Local Notifications\" for this app there.")
         }
+            .listRowBackground(Theme.card)
     }
 
     private var dataSection: some View {
@@ -129,6 +133,7 @@ struct SettingsView: View {
         } header: {
             Text("Data")
         }
+            .listRowBackground(Theme.card)
     }
 
     private var aboutSection: some View {
@@ -139,6 +144,7 @@ struct SettingsView: View {
         } footer: {
             Text("Exercise data and images: free-exercise-db (public domain, Unlicense).")
         }
+            .listRowBackground(Theme.card)
     }
 
     // MARK: Helpers
@@ -227,6 +233,7 @@ struct ImportPreviewView: View {
                 } footer: {
                     Text("Routines with the same name as an existing routine get the exercises added to the end.")
                 }
+            .listRowBackground(Theme.card)
 
                 ForEach(preview.routines) { routine in
                     Section(routine.name) {
@@ -237,11 +244,18 @@ struct ImportPreviewView: View {
                                 Text(summary(exercise))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                ForEach(exercise.alternatives) { alt in
+                                    Text("or \(alt.name) · \(summary(alt))")
+                                        .font(.caption2)
+                                        .foregroundStyle(Theme.accent)
+                                }
                             }
                         }
                     }
+            .listRowBackground(Theme.card)
                 }
             }
+            .themedList()
             .navigationTitle(preview.fileName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -268,7 +282,9 @@ struct ImportPreviewView: View {
     }
 
     private func summary(_ exercise: ImportedExercise) -> String {
-        let base = "\(Fmt.setsSummary(exercise.sets, mode: exercise.mode)) · Rest \(Fmt.rest(exercise.restSeconds))"
+        var base = Fmt.setsSummary(exercise.sets, mode: exercise.mode)
+        if let target = exercise.target.text { base += " · target \(target)" }
+        base += " · Rest \(Fmt.rest(exercise.restSeconds))"
         return exercise.supersetWithNext ? base + " · + superset with next" : base
     }
 
@@ -297,8 +313,12 @@ struct ImportFormatHelpView: View {
             } header: {
                 Text("Layout")
             }
+            .listRowBackground(Theme.card)
             Section {
                 example("10x60", "10 reps × 60 kg")
+                example("8-12", "Rep range 8–12")
+                example("8-12x60", "Rep range, 60 kg")
+                example("AMRAP", "As many reps as possible")
                 example("12", "12 reps, bodyweight")
                 example("1 min", "1 minute")
                 example("30 s", "30 seconds")
@@ -307,6 +327,7 @@ struct ImportFormatHelpView: View {
             } header: {
                 Text("Set cells")
             }
+            .listRowBackground(Theme.card)
             Section {
                 example("90", "90 seconds")
                 example("1:30", "1 minute 30 seconds")
@@ -315,19 +336,24 @@ struct ImportFormatHelpView: View {
             } header: {
                 Text("Rest cells")
             }
+            .listRowBackground(Theme.card)
             Section {
                 example("+", "Superset with the next row")
+                example("OR", "Next row is an alternative")
                 example("(empty)", "Normal exercise")
             } header: {
                 Text("Superset column (optional)")
             }
+            .listRowBackground(Theme.card)
             Section {
                 Text("You can also use one row per set with the columns Routine, Exercise, Reps, Kg, Time (min), Distance (m) and Rest. An empty Exercise cell continues the exercise above.")
                 Text("If the Routine column is empty, the routine from the row above is used. Without a Routine column everything goes into a routine called \"Imported\".")
             } header: {
                 Text("Other options")
             }
+            .listRowBackground(Theme.card)
         }
+            .themedList()
         .navigationTitle("Table format")
         .navigationBarTitleDisplayMode(.inline)
     }

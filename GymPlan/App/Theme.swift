@@ -1,11 +1,62 @@
 import SwiftUI
 import UIKit
 
+/// ARK: Survival Ascended palette (always dark).
 enum Theme {
-    static let accent = Color(red: 0.38, green: 0.40, blue: 1.0)
-    static let card = Color(uiColor: .secondarySystemBackground)
-    static let card2 = Color(uiColor: .tertiarySystemBackground)
-    static let background = Color(uiColor: .systemBackground)
+    /// Cyan glow from the logo.
+    static let accent = Color(hex: 0x28B8E8)
+    /// Text and icons on top of the accent.
+    static let onAccent = Color(hex: 0x00131B)
+    /// Editing a set that was already done.
+    static let edit = Color(hex: 0xFF9F0A)
+    /// Rust red from the logo: Stop and destructive actions.
+    static let danger = Color(hex: 0xB8493B)
+    static let text = Color(hex: 0xEEF6F9)
+    static let muted = Color(hex: 0x9AABB3)
+    static let background = Color.black
+    static let card = Color(hex: 0x0D161B)
+    static let card2 = Color(hex: 0x16232B)
+
+    static let uiAccent = UIColor(red: 0x28 / 255, green: 0xB8 / 255, blue: 0xE8 / 255, alpha: 1)
+    static let uiCard = UIColor(red: 0x0D / 255, green: 0x16 / 255, blue: 0x1B / 255, alpha: 1)
+    static let uiOnAccent = UIColor(red: 0x00 / 255, green: 0x13 / 255, blue: 0x1B / 255, alpha: 1)
+
+    /// Tab bar, navigation bar and segmented controls in the palette.
+    @MainActor
+    static func applyUIKitAppearance() {
+        let tabs = UITabBarAppearance()
+        tabs.configureWithOpaqueBackground()
+        tabs.backgroundColor = uiCard
+        UITabBar.appearance().standardAppearance = tabs
+        UITabBar.appearance().scrollEdgeAppearance = tabs
+
+        let nav = UINavigationBarAppearance()
+        nav.configureWithOpaqueBackground()
+        nav.backgroundColor = .black
+        nav.shadowColor = .clear
+        UINavigationBar.appearance().standardAppearance = nav
+        UINavigationBar.appearance().compactAppearance = nav
+
+        let segments = UISegmentedControl.appearance()
+        segments.selectedSegmentTintColor = uiAccent
+        segments.setTitleTextAttributes([.foregroundColor: uiOnAccent], for: .selected)
+    }
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255,
+                  green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+extension View {
+    /// Lists and forms on the palette's background (rows use Theme.card).
+    func themedList() -> some View {
+        scrollContentBackground(.hidden)
+            .background(Theme.background)
+    }
 }
 
 enum AppSettings {

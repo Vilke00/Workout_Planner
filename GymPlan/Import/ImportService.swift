@@ -10,6 +10,10 @@ struct ImportedExercise: Identifiable {
     var restSeconds: Int
     /// "+" in the Superset column: chained with the next exercise.
     var supersetWithNext: Bool = false
+    /// Rep range from cells like "8-12", or AMRAP.
+    var target: RepTarget = .empty
+    /// Rows after an "OR" row: exercises that can be done instead of this one.
+    var alternatives: [ImportedExercise] = []
 }
 
 struct ImportedRoutine: Identifiable {
@@ -200,33 +204,53 @@ enum ImportService {
         let body = Array(filled.dropFirst())
 
         if !setColumns.isEmpty && repsColumn == nil {
-            // Wide format
+            // Wide format. "OR" in the Superset/Link column makes the next row an alternative.
+            var nextIsAlternative = false
             for row in body {
                 let cell = { (index: Int?) -> String in
                     guard let index, index < row.count else { return "" }
                     return row[index].trimmed
                 }
                 let routineName = cell(routineColumn)
-                if !routineName.isEmpty { currentRoutine = routineName }
+                if !routineName.isEmpty && routineName != currentRoutine {
+                    currentRoutine = routineName
+                    nextIsAlternative = false
+                }
                 let name = cell(exerciseColumn)
                 guard !name.isEmpty else { continue }
 
                 var sets: [SetTemplate] = []
                 var isTime = false
+                var target = RepTarget.empty
                 for index in setColumns {
                     let raw = cell(index)
                     guard !raw.isEmpty else { continue }
                     let parsed = parseSetCell(raw)
                     if parsed.isTime { isTime = true }
+                    if target.isEmpty { target = parsed.target }
                     sets.append(parsed.set)
                 }
                 if sets.isEmpty { sets = [SetTemplate()] }
+                let link = cell(supersetColumn)
                 let exercise = ImportedExercise(name: name,
                                                 mode: isTime ? .timeDistance : .weightReps,
                                                 sets: sets,
                                                 restSeconds: parseRest(cell(restColumn)),
-                                                supersetWithNext: isLinked(cell(supersetColumn)))
-                append(exercise, routine: currentRoutine, to: &result)
+                                                supersetWithNext: isLinked(link),
+                                                target: isTime ? RepTarget.empty : target)
+
+                if nextIsAlternative,
+                   let r = result.lastIndex(where: { $0.name.caseInsensitiveCompare(currentRoutine) == .orderedSame }),
+                   !result[r].exercises.isEmpty {
+                    let e = result[r].exercises.count - 1
+                    result[r].exercises[e].alternatives.append(exercise)
+                    // The link of the last row in an OR group belongs to the whole slot.
+                    if exercise.supersetWithNext { result[r].exercises[e].supersetWithNext = true }
+                    if result[r].exercises[e].restSeconds == 0 { result[r].exercises[e].restSeconds = exercise.restSeconds }
+                } else {
+                    append(exercise, routine: currentRoutine, to: &result)
+                }
+                nextIsAlternative = isOr(link)
             }
         } else {
             // Long format: one row per set; consecutive rows of the same exercise are grouped.
@@ -293,6 +317,32 @@ enum ImportService {
         ["+", "yes", "y", "da", "x", "1", "true", "superset", "ss"].contains(raw.lowercased().trimmed)
     }
 
+    static func isOr(_ raw: String) -> Bool {
+        ["or", "ili", "|", "/", "alt", "alternative"].contains(raw.lowercased().trimmed)
+    }
+
+    /// "8-12" / "8 – 12 x 60" → (8, 12, " x 60")
+    static func parseRange(_ text: String) -> (low: Int, high: Int, rest: String)? {
+        let chars = Array(text)
+        var i = 0
+        func skipSpaces() { while i < chars.count, chars[i] == " " { i += 1 } }
+        func digits() -> String {
+            var out = ""
+            while i < chars.count, chars[i].isASCII, chars[i].isNumber { out.append(chars[i]); i += 1 }
+            return out
+        }
+        skipSpaces()
+        let a = digits()
+        guard !a.isEmpty else { return nil }
+        skipSpaces()
+        guard i < chars.count, chars[i] == "-" || chars[i] == "–" || chars[i] == "—" else { return nil }
+        i += 1
+        skipSpaces()
+        let b = digits()
+        guard !b.isEmpty, let lo = Int(a), let hi = Int(b), lo <= 10_000, hi <= 10_000 else { return nil }
+        return (Swift.min(lo, hi), Swift.max(lo, hi), String(chars[i...]))
+    }
+
     static func normalizeHeader(_ text: String) -> String {
         let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()
         let mapped = folded.map { ($0.isLetter || $0.isNumber) ? $0 : Character(" ") }
@@ -344,10 +394,26 @@ enum ImportService {
         return result
     }
 
-    static func parseSetCell(_ raw: String) -> (set: SetTemplate, isTime: Bool) {
+    static func parseSetCell(_ raw: String) -> (set: SetTemplate, isTime: Bool, target: RepTarget) {
         let text = raw.lowercased().trimmed
         if text.contains(":"), let minutes = parseClock(text) {
-            return (SetTemplate(reps: 0, minutes: minutes), true)
+            return (SetTemplate(reps: 0, minutes: minutes), true, RepTarget.empty)
+        }
+        // "AMRAP", "20 AMRAP" (expected reps), "20 AMRAP x 60"
+        if text.contains("amrap") || text.contains("failure") || text.contains("otkaz") {
+            var cleaned = text
+            for word in ["amrap", "to failure", "failure", "do otkaza", "otkaz"] {
+                cleaned = cleaned.replacingOccurrences(of: word, with: " ")
+            }
+            let numbers = tokenize(cleaned).map { $0.value }
+            let reps = numbers.first.map { Int(min(max($0, 0), 10_000).rounded()) } ?? 0
+            let weight = numbers.count > 1 ? numbers[1] : 0
+            return (SetTemplate(reps: reps, weight: weight), false, RepTarget(amrap: true))
+        }
+        // "8-12" or "8-12x60": a rep range; the plan starts at the bottom of the range.
+        if let range = parseRange(text) {
+            let weight = tokenize(range.rest).map { $0.value }.first ?? 0
+            return (SetTemplate(reps: range.low, weight: weight), false, RepTarget(min: range.low, max: range.high))
         }
         var minutes = 0.0
         var meters = 0.0
@@ -369,12 +435,12 @@ enum ImportService {
             }
         }
         if isTime {
-            return (SetTemplate(reps: 0, minutes: minutes, meters: meters), true)
+            return (SetTemplate(reps: 0, minutes: minutes, meters: meters), true, RepTarget.empty)
         }
         let numbers = tokenize(text).map { $0.value }
         let reps = numbers.first.map { Int(min(max($0, 0), 10_000).rounded()) } ?? 0
         let weight = numbers.count > 1 ? numbers[1] : 0
-        return (SetTemplate(reps: reps, weight: weight), false)
+        return (SetTemplate(reps: reps, weight: weight), false, RepTarget.empty)
     }
 
     /// "mm:ss" or "h:mm:ss" → minutes

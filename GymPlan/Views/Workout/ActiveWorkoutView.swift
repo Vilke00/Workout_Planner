@@ -197,6 +197,11 @@ struct ActiveWorkoutView: View {
                 Text(exercise.primaryMuscles.map(Fmt.title).joined(separator: ", "))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                if exercise.mode == .weightReps, let target = exercise.target?.text {
+                    Label("Target \(target)", systemImage: "scope")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
                 if inSuperset {
                     Label("Superset", systemImage: "link")
                         .font(.caption.weight(.bold))
@@ -226,6 +231,7 @@ struct ActiveWorkoutView: View {
                              mode: exercise.mode,
                              isCurrent: s.currentStep?.exerciseIndex == exerciseIndex && s.currentStep?.setIndex == index,
                              isEditing: editing == ref,
+                             target: exercise.mode == .weightReps ? exercise.target?.text : nil,
                              weightStep: weightStep,
                              onAdjust: { field, delta in
                                  workout.adjust(field, by: delta, exerciseIndex: exerciseIndex, setIndex: index)
@@ -264,7 +270,7 @@ struct ActiveWorkoutView: View {
                 } label: {
                     Text("Finish")
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.onAccent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(Capsule().fill(Theme.accent))
@@ -294,9 +300,10 @@ struct ActiveWorkoutView: View {
                     } label: {
                         Text("Done")
                             .font(.headline)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Theme.onAccent)
                             .frame(width: 100, height: 56)
                             .background(Capsule().fill(Theme.accent))
+                            .shadow(color: Theme.accent.opacity(0.55), radius: 11)
                     }
                 }
                 .padding(.horizontal)
@@ -357,7 +364,7 @@ struct ExerciseProgressLine: View {
         } label: {
             Text("\(index + 1)")
                 .font(.footnote.weight(.bold).monospacedDigit())
-                .foregroundStyle(isCurrent ? Color.white : (done ? Theme.accent : Color.primary))
+                .foregroundStyle(isCurrent ? Theme.onAccent : (done ? Theme.accent : Color.primary))
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(isCurrent ? Theme.accent : (done ? Theme.accent.opacity(0.18) : Theme.card)))
                 .overlay(Circle().strokeBorder(isCurrent ? Theme.accent : Color.secondary.opacity(0.25), lineWidth: 1.5))
@@ -375,6 +382,8 @@ struct ActiveSetRow: View {
     let mode: TrackingMode
     let isCurrent: Bool
     let isEditing: Bool
+    /// Rep target shown on the current set, e.g. "8–12 reps" (display only).
+    let target: String?
     let weightStep: Double
     let onAdjust: (WorkoutManager.Field, Double) -> Void
     let onSetValue: (WorkoutManager.Field, Double) -> Void
@@ -384,7 +393,7 @@ struct ActiveSetRow: View {
     let onStatus: (SetStatus) -> Void
 
     private var showsEditors: Bool { isCurrent || isEditing }
-    private var highlight: Color { isEditing ? Color.orange : Theme.accent }
+    private var highlight: Color { isEditing ? Theme.edit : Theme.accent }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -414,6 +423,14 @@ struct ActiveSetRow: View {
             Text(isEditing ? "SET \(number) · EDITING" : "SET \(number)")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(showsEditors ? highlight : Color.secondary)
+            if isCurrent, let target {
+                Text("Target \(target)")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Theme.accent.opacity(0.18)))
+                    .foregroundStyle(Theme.accent)
+            }
             Spacer()
             if isEditing {
                 Menu {

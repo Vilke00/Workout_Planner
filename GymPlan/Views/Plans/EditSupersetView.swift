@@ -73,7 +73,7 @@ struct LinkToggleRow: View {
             HStack(spacing: 10) {
                 Image(systemName: isOn ? "link" : "plus")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(isOn ? Color.white : Color.secondary)
+                    .foregroundStyle(isOn ? Theme.onAccent : Color.secondary)
                     .frame(width: 34, height: 34)
                     .background(Circle().fill(isOn ? Theme.accent : Theme.card))
                     .overlay(
@@ -118,6 +118,7 @@ struct ReorderExercisesView: View {
                     items.move(fromOffsets: source, toOffset: destination)
                 }
             }
+            .themedList()
             .environment(\.editMode, .constant(.active))
             .navigationTitle("Reorder Exercises")
             .navigationBarTitleDisplayMode(.inline)

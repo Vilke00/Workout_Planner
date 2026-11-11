@@ -3,6 +3,20 @@ import SwiftUI
 /// Search + Muscle / Equipment / Category filters + list of all exercises.
 struct ExercisePickerView: View {
     let onAdd: (RoutineExercise) -> Void
+    let title: String
+    let showsRest: Bool
+    /// When set, tapping an exercise picks it right away (used by Replace) instead of opening the setup screen.
+    let onPick: ((Exercise) -> Void)?
+
+    init(onAdd: @escaping (RoutineExercise) -> Void,
+         title: String = "Add Exercise",
+         showsRest: Bool = true,
+         onPick: ((Exercise) -> Void)? = nil) {
+        self.onAdd = onAdd
+        self.title = title
+        self.showsRest = showsRest
+        self.onPick = onPick
+    }
 
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -35,8 +49,19 @@ struct ExercisePickerView: View {
                         .listRowSeparator(.hidden)
                 } else {
                     ForEach(list) { exercise in
-                        NavigationLink(value: exercise) {
-                            ExercisePickerRow(exercise: exercise)
+                        if let onPick {
+                            Button {
+                                onPick(exercise)
+                                dismiss()
+                            } label: {
+                                ExercisePickerRow(exercise: exercise)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink(value: exercise) {
+                                ExercisePickerRow(exercise: exercise)
+                            }
                         }
                     }
                 }
@@ -48,7 +73,7 @@ struct ExercisePickerView: View {
             .searchable(text: $query,
                         placement: .navigationBarDrawer(displayMode: .always),
                         prompt: "Search exercise by name")
-            .navigationTitle("Add Exercise")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -56,7 +81,7 @@ struct ExercisePickerView: View {
                 }
             }
             .navigationDestination(for: Exercise.self) { exercise in
-                ExerciseConfigView(exercise: exercise, existing: nil) { newItem in
+                ExerciseConfigView(exercise: exercise, existing: nil, showsRest: showsRest) { newItem in
                     onAdd(newItem)
                     dismiss()
                 }
@@ -140,7 +165,7 @@ struct FilterChip: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .foregroundStyle(isActive ? Color.white : Color.primary)
+        .foregroundStyle(isActive ? Theme.onAccent : Color.primary)
         .background(Capsule().fill(isActive ? Theme.accent : Theme.card))
     }
 }

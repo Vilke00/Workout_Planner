@@ -41,6 +41,8 @@ Settings → **Import from Excel / CSV**. Šablon: `docs/GymPlan_import_template
 - Set ćelija: `10x60` (ponavljanja × kg), `12` (bez tega), `1 min`, `30 s`, `400 m`, `5 km`.
 - Rest: `90`, `1:30`, `2 min`, prazno = Off.
 - Superset: `+` spaja vežbu sa vežbom u sledećem redu.
+- `OR` u koloni Superset: vežba u sledećem redu je alternativa (npr. Bench press OR Dips).
+- Raspon ponavljanja: `8-12` (plan kreće od 8), `8-12x60` sa kilažom, `AMRAP` ili `20 AMRAP`.
 - Vežbe se traže po imenu u bazi; nepoznata imena postaju custom vežbe.
 
 ## Struktura

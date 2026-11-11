@@ -1,5 +1,13 @@
 import SwiftUI
 
+enum ExerciseCardAction {
+    case edit
+    case replace
+    case manageAlternatives
+    case switchTo(UUID)
+    case delete
+}
+
 /// Exercises of one routine shown as cards. Supersets are chained together.
 struct RoutinePageView: View {
     let planID: UUID
@@ -7,6 +15,8 @@ struct RoutinePageView: View {
 
     @Environment(AppStore.self) private var store
     @State private var editing: RoutineExercise?
+    @State private var replacing: RoutineExercise?
+    @State private var alternativesFor: RoutineExercise?
 
     var body: some View {
         ScrollView {
@@ -20,9 +30,9 @@ struct RoutinePageView: View {
             } else {
                 LazyVStack(spacing: 14) {
                     ForEach(ExerciseBlock.make(from: routine.exercises)) { block in
-                        ExerciseBlockView(block: block,
-                                          onEdit: { editing = $0 },
-                                          onDelete: { store.deleteExercise($0.id, planID: planID, routineID: routine.id) })
+                        ExerciseBlockView(block: block) { item, action in
+                            handle(action, for: item)
+                        }
                     }
                 }
                 .padding(.horizontal)
@@ -37,6 +47,34 @@ struct RoutinePageView: View {
                     store.updateExercise(updated, planID: planID, routineID: routine.id)
                 }
             }
+        }
+        .sheet(item: $replacing) { item in
+            ExercisePickerView(onAdd: { _ in },
+                               title: "Replace \(store.exercise(item.exerciseID)?.name ?? "Exercise")",
+                               onPick: { exercise in
+                                   store.replaceExercise(slotID: item.id, with: exercise.id,
+                                                         planID: planID, routineID: routine.id)
+                               })
+        }
+        .sheet(item: $alternativesFor) { item in
+            AlternativesView(planID: planID, routineID: routine.id, slotID: item.id)
+        }
+    }
+
+    private func handle(_ action: ExerciseCardAction, for item: RoutineExercise) {
+        switch action {
+        case .edit:
+            editing = item
+        case .replace:
+            replacing = item
+        case .manageAlternatives:
+            alternativesFor = item
+        case .switchTo(let optionID):
+            withAnimation(.snappy) {
+                store.switchToAlternative(slotID: item.id, optionID: optionID, planID: planID, routineID: routine.id)
+            }
+        case .delete:
+            store.deleteExercise(item.id, planID: planID, routineID: routine.id)
         }
     }
 }
@@ -61,8 +99,9 @@ struct ExerciseBlock: Identifiable {
 
 struct ExerciseBlockView: View {
     let block: ExerciseBlock
-    let onEdit: (RoutineExercise) -> Void
-    let onDelete: (RoutineExercise) -> Void
+    let onAction: (RoutineExercise, ExerciseCardAction) -> Void
+
+    @Environment(AppStore.self) private var store
 
     var body: some View {
         if block.items.count == 1, let item = block.items.first {
@@ -87,15 +126,42 @@ struct ExerciseBlockView: View {
     private func card(_ item: RoutineExercise) -> some View {
         ExerciseCardView(item: item)
             .contentShape(Rectangle())
-            .onTapGesture { onEdit(item) }
+            .onTapGesture { onAction(item, .edit) }
             .contextMenu {
                 Button {
-                    onEdit(item)
+                    onAction(item, .edit)
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                Button {
+                    onAction(item, .replace)
+                } label: {
+                    Label("Replace", systemImage: "arrow.triangle.2.circlepath")
+                }
+                Menu {
+                    ForEach(item.alternatives) { option in
+                        Button {
+                            onAction(item, .switchTo(option.id))
+                        } label: {
+                            Label("Use \(store.exercise(option.exerciseID)?.name ?? "Unknown exercise")",
+                                  systemImage: "arrow.left.arrow.right")
+                        }
+                    }
+                    if !item.alternatives.isEmpty {
+                        Divider()
+                    }
+                    Button {
+                        onAction(item, .manageAlternatives)
+                    } label: {
+                        Label(item.alternatives.isEmpty ? "Add Alternative" : "Manage Alternatives",
+                              systemImage: "list.bullet")
+                    }
+                } label: {
+                    Label("Alternative", systemImage: "arrow.left.arrow.right")
+                }
+                Divider()
                 Button(role: .destructive) {
-                    onDelete(item)
+                    onAction(item, .delete)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
@@ -113,7 +179,7 @@ struct ChainConnector: View {
                     .frame(width: 3)
                 Image(systemName: "link")
                     .font(.caption2.weight(.heavy))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.onAccent)
                     .frame(width: 22, height: 22)
                     .background(Circle().fill(Theme.accent))
             }
@@ -154,11 +220,28 @@ struct ExerciseCardView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.accent)
                     .lineLimit(2)
+                if item.mode == .weightReps, let target = item.target.text {
+                    Label("Target \(target)", systemImage: "scope")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if !item.alternatives.isEmpty {
+                    Label("or " + alternativeNames, systemImage: "arrow.left.arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.card))
+    }
+
+    private var alternativeNames: String {
+        item.alternatives
+            .map { store.exercise($0.exerciseID)?.name ?? "Unknown exercise" }
+            .joined(separator: " / ")
     }
 }
 

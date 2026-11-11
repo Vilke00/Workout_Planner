@@ -16,6 +16,8 @@ struct WorkoutActivityAttributes: ActivityAttributes {
         var restStart: Date?
         var restEnd: Date?
         var finished: Bool
+        /// Rep target, e.g. "8–12 reps" or "AMRAP" (display only).
+        var target: String?
 
         var firstUnit: String { isTime ? "min" : "reps" }
         var secondUnit: String { isTime ? "m" : "kg" }

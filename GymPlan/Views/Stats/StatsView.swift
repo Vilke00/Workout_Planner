@@ -142,6 +142,7 @@ struct WorkoutLogDetailView: View {
                         LabeledContent("Volume", value: "\(Fmt.num(log.volume)) kg")
                     }
                 }
+            .listRowBackground(Theme.card)
                 ForEach(log.exercises) { exercise in
                     Section {
                         ForEach(Array(exercise.sets.enumerated()), id: \.offset) { index, set in
@@ -176,8 +177,10 @@ struct WorkoutLogDetailView: View {
                             Text("Tap a set to fix it, swipe left to delete it.")
                         }
                     }
+            .listRowBackground(Theme.card)
                 }
             }
+            .themedList()
             .navigationTitle(log.routineName)
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $editTarget) { target in
@@ -217,7 +220,9 @@ struct EditLoggedSetSheet: View {
                 } header: {
                     Text("\(target.name) · Set \(target.setIndex + 1)")
                 }
+            .listRowBackground(Theme.card)
             }
+            .themedList()
             .navigationTitle("Edit Set")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -299,6 +304,7 @@ struct PerformedExerciseList: View {
                 }
             }
         }
+            .themedList()
         .listStyle(.plain)
         .searchable(text: $query, prompt: "Search exercise")
     }

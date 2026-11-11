@@ -91,9 +91,10 @@ struct RoutineActionBar: View {
         } label: {
             Image(systemName: workout.isActive ? "stop.fill" : "play.fill")
                 .font(.title2.weight(.bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(workout.isActive ? Theme.text : Theme.onAccent)
                 .frame(width: 62, height: 62)
-                .background(Circle().fill(workout.isActive ? Color.red : Theme.accent))
+                .background(Circle().fill(workout.isActive ? Theme.danger : Theme.accent))
+                .shadow(color: (workout.isActive ? Theme.danger : Theme.accent).opacity(0.55), radius: 12)
         }
     }
 

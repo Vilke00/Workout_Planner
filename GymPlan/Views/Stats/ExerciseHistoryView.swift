@@ -20,6 +20,7 @@ struct ExerciseHistoryView: View {
                 Section {
                     bestRow
                 }
+            .listRowBackground(Theme.card)
                 Section {
                     ForEach(entries) { entry in
                         HistoryRow(entry: entry)
@@ -27,8 +28,10 @@ struct ExerciseHistoryView: View {
                 } header: {
                     Text(showAll ? "All sessions" : "When the numbers changed")
                 }
+            .listRowBackground(Theme.card)
             }
         }
+            .themedList()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -5,23 +5,32 @@ import UIKit
 struct ExerciseConfigView: View {
     let exercise: Exercise
     let existing: RoutineExercise?
+    /// Alternatives share the slot's rest, so their setup hides it.
+    let showsRest: Bool
     let onSave: (RoutineExercise) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var mode: TrackingMode
     @State private var rows: [EditableSet]
     @State private var restSeconds: Int
+    @State private var repMin: String
+    @State private var repMax: String
+    @State private var amrap: Bool
     @State private var showRestPicker = false
     @FocusState private var focus: FieldID?
 
     enum FieldID: Hashable {
         case first(UUID)
         case second(UUID)
+        case repMin
+        case repMax
     }
 
-    init(exercise: Exercise, existing: RoutineExercise?, onSave: @escaping (RoutineExercise) -> Void) {
+    init(exercise: Exercise, existing: RoutineExercise?, showsRest: Bool = true,
+         onSave: @escaping (RoutineExercise) -> Void) {
         self.exercise = exercise
         self.existing = existing
+        self.showsRest = showsRest
         self.onSave = onSave
         let startMode: TrackingMode = existing?.mode ?? (exercise.prefersTime ? .timeDistance : .weightReps)
         let startSets: [SetTemplate]
@@ -35,11 +44,16 @@ struct ExerciseConfigView: View {
         _mode = State(initialValue: startMode)
         _rows = State(initialValue: startSets.map { EditableSet($0) })
         _restSeconds = State(initialValue: existing?.restSeconds ?? 0)
+        let target = existing?.target ?? RepTarget.empty
+        _repMin = State(initialValue: target.min.map(String.init) ?? "")
+        _repMax = State(initialValue: target.max.map(String.init) ?? "")
+        _amrap = State(initialValue: target.amrap)
     }
 
     var body: some View {
         List {
             Section { header }
+            .listRowBackground(Theme.card)
 
             Section {
                 Picker("Type", selection: $mode) {
@@ -69,7 +83,13 @@ struct ExerciseConfigView: View {
             } footer: {
                 Text("Swipe a set to the left to delete it.")
             }
+            .listRowBackground(Theme.card)
 
+            if mode == .weightReps {
+                targetSection
+            }
+
+            if showsRest {
             Section {
                 Button {
                     focus = nil
@@ -90,7 +110,10 @@ struct ExerciseConfigView: View {
             } footer: {
                 Text("Rest between sets of this exercise.")
             }
+            .listRowBackground(Theme.card)
+            }
         }
+            .themedList()
         .navigationTitle(existing == nil ? "Add Exercise" : "Edit Exercise")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
@@ -98,6 +121,46 @@ struct ExerciseConfigView: View {
         .sheet(isPresented: $showRestPicker) {
             RestPickerSheet(seconds: $restSeconds, title: "Rest Between Sets")
         }
+    }
+
+    private var targetSection: some View {
+        Section {
+            Toggle("AMRAP / to failure", isOn: $amrap)
+            if !amrap {
+                HStack(spacing: 8) {
+                    Text("Rep range")
+                    Spacer()
+                    rangeField("8", text: $repMin, field: .repMin)
+                    Text("–")
+                        .foregroundStyle(.secondary)
+                    rangeField("12", text: $repMax, field: .repMax)
+                }
+            }
+        } header: {
+            Text("Target reps")
+        } footer: {
+            Text("Shown during the workout. When you reach the top of the range, the next workout asks for the bottom of the range with more weight.")
+        }
+            .listRowBackground(Theme.card)
+    }
+
+    private func rangeField(_ placeholder: String, text: Binding<String>, field: FieldID) -> some View {
+        TextField(placeholder, text: text)
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.center)
+            .font(.body.weight(.semibold).monospacedDigit())
+            .frame(width: 56)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.card2))
+            .focused($focus, equals: field)
+    }
+
+    private var currentTarget: RepTarget {
+        guard mode == .weightReps else { return RepTarget.empty }
+        if amrap { return RepTarget(amrap: true) }
+        let low = Int(repMin.trimmed).map { max(0, $0) }
+        let high = Int(repMax.trimmed).map { max(0, $0) }
+        return RepTarget(min: low, max: high)
     }
 
     @ToolbarContentBuilder
@@ -199,7 +262,9 @@ struct ExerciseConfigView: View {
                                    mode: mode,
                                    sets: sets,
                                    restSeconds: restSeconds,
-                                   supersetWithNext: existing?.supersetWithNext ?? false)
+                                   supersetWithNext: existing?.supersetWithNext ?? false,
+                                   target: currentTarget,
+                                   alternatives: existing?.alternatives ?? [])
         onSave(item)
         if existing != nil { dismiss() }
     }

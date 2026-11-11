@@ -58,6 +58,80 @@ struct SetTemplate: Identifiable, Codable, Hashable {
     }
 }
 
+/// Target reps for an exercise: a range like 8–12, or AMRAP (as many reps as possible).
+struct RepTarget: Codable, Hashable {
+    var min: Int?
+    var max: Int?
+    var amrap: Bool
+
+    init(min: Int? = nil, max: Int? = nil, amrap: Bool = false) {
+        self.min = min
+        self.max = max
+        self.amrap = amrap
+    }
+
+    static let empty = RepTarget()
+
+    enum CodingKeys: String, CodingKey { case min, max, amrap }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        min = c.value(.min, default: Int?.none)
+        max = c.value(.max, default: Int?.none)
+        amrap = c.value(.amrap, default: false)
+    }
+
+    var isEmpty: Bool { !amrap && min == nil && max == nil }
+
+    /// Lower and upper bound when both exist (a single number counts as both).
+    var range: ClosedRange<Int>? {
+        guard !amrap else { return nil }
+        switch (min, max) {
+        case let (lo?, hi?): return Swift.min(lo, hi)...Swift.max(lo, hi)
+        case let (lo?, nil): return lo...lo
+        case let (nil, hi?): return hi...hi
+        default: return nil
+        }
+    }
+
+    /// "8–12 reps", "10 reps", "AMRAP" or nil.
+    var text: String? {
+        if amrap { return "AMRAP" }
+        guard let r = range else { return nil }
+        return r.lowerBound == r.upperBound ? "\(r.lowerBound) reps" : "\(r.lowerBound)–\(r.upperBound) reps"
+    }
+}
+
+/// An alternative exercise for a slot in a routine ("Bench press OR Dips").
+/// It keeps its own sets and rep target, so switching back and forth keeps both.
+struct ExerciseOption: Identifiable, Codable, Hashable {
+    var id: UUID
+    var exerciseID: String
+    var mode: TrackingMode
+    var sets: [SetTemplate]
+    var target: RepTarget
+
+    init(id: UUID = UUID(), exerciseID: String, mode: TrackingMode = .weightReps,
+         sets: [SetTemplate] = [SetTemplate()], target: RepTarget = .empty) {
+        self.id = id
+        self.exerciseID = exerciseID
+        self.mode = mode
+        self.sets = sets
+        self.target = target
+    }
+
+    enum CodingKeys: String, CodingKey { case id, exerciseID, mode, sets, target }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, default: UUID())
+        exerciseID = c.value(.exerciseID, default: "")
+        mode = c.value(.mode, default: TrackingMode.weightReps)
+        sets = c.value(.sets, default: [SetTemplate]())
+        target = c.value(.target, default: RepTarget.empty)
+    }
+}
+
 struct RoutineExercise: Identifiable, Codable, Hashable {
     var id: UUID
     var exerciseID: String
@@ -66,18 +140,26 @@ struct RoutineExercise: Identifiable, Codable, Hashable {
     var restSeconds: Int
     /// When true this card is chained (superset) with the card below it.
     var supersetWithNext: Bool
+    var target: RepTarget
+    /// Other exercises that can be done instead of this one.
+    var alternatives: [ExerciseOption]
 
     init(id: UUID = UUID(), exerciseID: String, mode: TrackingMode = .weightReps,
-         sets: [SetTemplate] = [SetTemplate()], restSeconds: Int = 0, supersetWithNext: Bool = false) {
+         sets: [SetTemplate] = [SetTemplate()], restSeconds: Int = 0, supersetWithNext: Bool = false,
+         target: RepTarget = .empty, alternatives: [ExerciseOption] = []) {
         self.id = id
         self.exerciseID = exerciseID
         self.mode = mode
         self.sets = sets
         self.restSeconds = restSeconds
         self.supersetWithNext = supersetWithNext
+        self.target = target
+        self.alternatives = alternatives
     }
 
-    enum CodingKeys: String, CodingKey { case id, exerciseID, mode, sets, restSeconds, supersetWithNext }
+    enum CodingKeys: String, CodingKey {
+        case id, exerciseID, mode, sets, restSeconds, supersetWithNext, target, alternatives
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -87,6 +169,26 @@ struct RoutineExercise: Identifiable, Codable, Hashable {
         sets = c.value(.sets, default: [SetTemplate]())
         restSeconds = c.value(.restSeconds, default: 0)
         supersetWithNext = c.value(.supersetWithNext, default: false)
+        target = c.value(.target, default: RepTarget.empty)
+        alternatives = c.value(.alternatives, default: [ExerciseOption]())
+    }
+
+    /// The exercise currently chosen for this slot, as an option.
+    var activeOption: ExerciseOption {
+        ExerciseOption(id: id, exerciseID: exerciseID, mode: mode, sets: sets, target: target)
+    }
+
+    /// Makes an alternative the active exercise; the current one becomes an alternative.
+    mutating func switchTo(alternative optionID: UUID) {
+        guard let index = alternatives.firstIndex(where: { $0.id == optionID }) else { return }
+        let chosen = alternatives[index]
+        var previous = activeOption
+        previous.id = chosen.id
+        alternatives[index] = previous
+        exerciseID = chosen.exerciseID
+        mode = chosen.mode
+        sets = chosen.sets
+        target = chosen.target
     }
 
     func duplicated() -> RoutineExercise {
@@ -96,6 +198,11 @@ struct RoutineExercise: Identifiable, Codable, Hashable {
             var s = set
             s.id = UUID()
             return s
+        }
+        copy.alternatives = alternatives.map { option in
+            var o = option
+            o.id = UUID()
+            return o
         }
         return copy
     }
@@ -276,6 +383,9 @@ struct SessionSet: Identifiable, Codable, Hashable {
 
 struct SessionExercise: Identifiable, Codable, Hashable {
     var id = UUID()
+    /// Slot in the routine this came from (used for progression). Optional for old saved sessions.
+    var routineExerciseID: UUID?
+    var target: RepTarget?
     var exerciseID: String
     var name: String
     var primaryMuscles: [String]

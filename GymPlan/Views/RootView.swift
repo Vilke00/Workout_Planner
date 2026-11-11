@@ -16,5 +16,11 @@ struct RootView: View {
         .fullScreenCover(isPresented: $workout.isPresented) {
             ActiveWorkoutView()
         }
+        .alert("Next workout", isPresented: Binding(get: { workout.progressionSummary != nil },
+                                                    set: { if !$0 { workout.progressionSummary = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(workout.progressionSummary ?? "")
+        }
     }
 }

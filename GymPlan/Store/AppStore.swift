@@ -212,6 +212,96 @@ final class AppStore {
         }
     }
 
+    // MARK: - Replace / alternatives
+
+    func replaceExercise(slotID: UUID, with exerciseID: String, planID: UUID, routineID: UUID) {
+        updateRoutine(planID: planID, routineID: routineID) { routine in
+            guard let i = routine.exercises.firstIndex(where: { $0.id == slotID }) else { return }
+            let mode = routine.exercises[i].mode
+            routine.exercises[i].exerciseID = exerciseID
+            if mode == .weightReps {
+                // Old weights belong to the old exercise: use this exercise's last weights, or start empty.
+                let sets = routine.exercises[i].sets.map { set -> SetTemplate in
+                    var s = set
+                    s.weight = 0
+                    return s
+                }
+                routine.exercises[i].sets = prefilledFromHistory(sets, exerciseID: exerciseID, mode: mode)
+            }
+        }
+    }
+
+    func switchToAlternative(slotID: UUID, optionID: UUID, planID: UUID, routineID: UUID) {
+        updateRoutine(planID: planID, routineID: routineID) { routine in
+            guard let i = routine.exercises.firstIndex(where: { $0.id == slotID }) else { return }
+            routine.exercises[i].switchTo(alternative: optionID)
+        }
+    }
+
+    func addAlternative(_ option: ExerciseOption, slotID: UUID, planID: UUID, routineID: UUID) {
+        updateRoutine(planID: planID, routineID: routineID) { routine in
+            guard let i = routine.exercises.firstIndex(where: { $0.id == slotID }) else { return }
+            routine.exercises[i].alternatives.append(option)
+        }
+    }
+
+    func updateAlternative(_ option: ExerciseOption, slotID: UUID, planID: UUID, routineID: UUID) {
+        updateRoutine(planID: planID, routineID: routineID) { routine in
+            guard let i = routine.exercises.firstIndex(where: { $0.id == slotID }),
+                  let a = routine.exercises[i].alternatives.firstIndex(where: { $0.id == option.id }) else { return }
+            routine.exercises[i].alternatives[a] = option
+        }
+    }
+
+    func removeAlternative(optionID: UUID, slotID: UUID, planID: UUID, routineID: UUID) {
+        updateRoutine(planID: planID, routineID: routineID) { routine in
+            guard let i = routine.exercises.firstIndex(where: { $0.id == slotID }) else { return }
+            routine.exercises[i].alternatives.removeAll { $0.id == optionID }
+        }
+    }
+
+    /// Fills empty weights with the weights from the last time this exercise was done.
+    func prefilledFromHistory(_ sets: [SetTemplate], exerciseID: String, mode: TrackingMode) -> [SetTemplate] {
+        guard mode == .weightReps,
+              sets.allSatisfy({ $0.weight == 0 }),
+              let last = logs.sorted(by: { $0.date > $1.date })
+                .lazy
+                .compactMap({ log in log.exercises.first(where: { $0.exerciseID == exerciseID && $0.mode == .weightReps }) })
+                .first,
+              let lastSet = last.sets.last else { return sets }
+        return sets.enumerated().map { index, set in
+            var s = set
+            s.weight = last.sets.indices.contains(index) ? last.sets[index].weight : lastSet.weight
+            return s
+        }
+    }
+
+    // MARK: - Progression
+
+    /// After a workout: sets the next targets for every exercise that was done.
+    /// Returns one line per exercise whose targets changed.
+    func applyProgression(planID: UUID, routineID: UUID, performed: [SessionExercise], weightStep: Double) -> [String] {
+        var lines: [String] = []
+        updateRoutine(planID: planID, routineID: routineID) { routine in
+            for ex in performed {
+                guard let slotID = ex.routineExerciseID,
+                      let i = routine.exercises.firstIndex(where: { $0.id == slotID }) else { continue }
+                if routine.exercises[i].exerciseID == ex.exerciseID {
+                    var option = routine.exercises[i].activeOption
+                    if let line = Progression.apply(to: &option, performed: ex, step: weightStep) {
+                        routine.exercises[i].sets = option.sets
+                        lines.append(line)
+                    }
+                } else if let a = routine.exercises[i].alternatives.firstIndex(where: { $0.exerciseID == ex.exerciseID }) {
+                    if let line = Progression.apply(to: &routine.exercises[i].alternatives[a], performed: ex, step: weightStep) {
+                        lines.append(line)
+                    }
+                }
+            }
+        }
+        return lines
+    }
+
     // MARK: - Logs / history
 
     func addLog(_ log: WorkoutLog) {
@@ -318,21 +408,30 @@ final class AppStore {
                 result.routinesCreated += 1
             }
 
+            func resolve(_ name: String) -> String {
+                let key = EquipmentCatalog.normalize(name)
+                if let found = lookup[key] { return found }
+                let custom = Exercise.custom(name: name)
+                newCustom.append(custom)
+                lookup[key] = custom.id
+                result.customCreated.append(name)
+                return custom.id
+            }
+
             for item in imported.exercises {
-                let key = EquipmentCatalog.normalize(item.name)
-                let exerciseID: String
-                if let found = lookup[key] {
-                    exerciseID = found
-                } else {
-                    let custom = Exercise.custom(name: item.name)
-                    newCustom.append(custom)
-                    lookup[key] = custom.id
-                    exerciseID = custom.id
-                    result.customCreated.append(item.name)
+                let exerciseID = resolve(item.name)
+                let alternatives: [ExerciseOption] = item.alternatives.map { alt in
+                    let altID = resolve(alt.name)
+                    return ExerciseOption(exerciseID: altID, mode: alt.mode,
+                                          sets: prefilledFromHistory(alt.sets, exerciseID: altID, mode: alt.mode),
+                                          target: alt.target)
                 }
                 let routineExercise = RoutineExercise(exerciseID: exerciseID, mode: item.mode,
-                                                      sets: item.sets, restSeconds: item.restSeconds,
-                                                      supersetWithNext: item.supersetWithNext)
+                                                      sets: prefilledFromHistory(item.sets, exerciseID: exerciseID, mode: item.mode),
+                                                      restSeconds: item.restSeconds,
+                                                      supersetWithNext: item.supersetWithNext,
+                                                      target: item.target,
+                                                      alternatives: alternatives)
                 plans[planIndex].routines[routineIndex].exercises.append(routineExercise)
                 result.exercisesAdded += 1
             }

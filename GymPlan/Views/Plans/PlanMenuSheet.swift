@@ -38,15 +38,18 @@ struct PlanMenuSheet: View {
                         row("Manage Routines", icon: "list.bullet", chevron: true)
                     }
                 }
+            .listRowBackground(Theme.card)
                 Section {
                     Button(role: .destructive) {
                         showDelete = true
                     } label: {
                         Label("Delete Plan", systemImage: "trash")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.danger)
                     }
                 }
+            .listRowBackground(Theme.card)
             }
+            .themedList()
             .navigationTitle(planName)
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $showRoutines) {
@@ -115,6 +118,7 @@ struct RoutineManagementView: View {
             } footer: {
                 Text("Hold ☰ and drag to change the order.")
             }
+            .listRowBackground(Theme.card)
 
             Section {
                 Button {
@@ -132,6 +136,7 @@ struct RoutineManagementView: View {
                 .listRowBackground(Color.clear)
             }
         }
+            .themedList()
         .environment(\.editMode, .constant(.active))
         .navigationTitle("Routines")
         .navigationBarTitleDisplayMode(.inline)

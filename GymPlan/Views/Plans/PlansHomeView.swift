@@ -202,6 +202,7 @@ struct RoutineTabBar: View {
                 Capsule()
                     .fill(isSelected ? Theme.accent : Color.clear)
                     .frame(height: 3)
+                    .shadow(color: isSelected ? Theme.accent.opacity(0.9) : Color.clear, radius: 4)
             }
             .fixedSize(horizontal: true, vertical: false)
         }
@@ -221,7 +222,7 @@ struct ResumeWorkoutBanner: View {
                 workout.isPresented = true
             } label: {
                 HStack(spacing: 10) {
-                    Circle().fill(Color.red).frame(width: 8, height: 8)
+                    Circle().fill(Theme.danger).frame(width: 8, height: 8)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Workout in progress")
                             .font(.subheadline.weight(.semibold))
